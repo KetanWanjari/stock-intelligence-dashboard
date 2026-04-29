@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Intelligence Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & Variables ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0d1117;
+      --card:      #161b22;
+      --border:    #30363d;
+      --accent:    #58a6ff;
+      --accent2:   #f78166;
+      --green:     #3fb950;
+      --red:       #f85149;
+      --text:      #c9d1d9;
+      --muted:     #8b949e;
+      --sidebar-w: 240px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ───────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    #sidebar h2 {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      color: var(--muted);
+      text-transform: uppercase;
+      padding: 18px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #company-list { overflow-y: auto; flex: 1; }
+
+    .company-item {
+      display: flex;
+      flex-direction: column;
+      padding: 11px 16px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: all .15s;
+    }
+    .company-item:hover  { background: rgba(88,166,255,.07); }
+    .company-item.active { background: rgba(88,166,255,.12); border-left-color: var(--accent); }
+
+    .ci-symbol { font-weight: 700; font-size: 13px; color: var(--accent); }
+    .ci-name   { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ci-sector { font-size: 10px; color: #6e7681; margin-top: 1px; }
+
+    /* ── Main ──────────────────────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ───────────────────────────────────────────────────────────── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #topbar h1 {
+      font-size: 18px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #a371f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-right: auto;
+    }
+
+    .tab-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all .15s;
+    }
+    .tab-btn:hover, .tab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Content ───────────────────────────────────────────────────────────── */
+    #content { flex: 1; overflow-y: auto; padding: 20px; }
+
+    /* ── Stats row ─────────────────────────────────────────────────────────── */
+    #stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+    .stat-value { font-size: 20px; font-weight: 700; }
+    .stat-value.up   { color: var(--green); }
+    .stat-value.down { color: var(--red); }
+
+    /* ── Chart card ────────────────────────────────────────────────────────── */
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .chart-card h3 { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+
+    canvas { max-height: 280px; }
+
+    /* ── Range buttons ─────────────────────────────────────────────────────── */
+    #range-btns { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .range-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all .15s;
+    }
+    .range-btn:hover, .range-btn.active {
+      background: rgba(88,166,255,.15);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Compare panel ─────────────────────────────────────────────────────── */
+    #compare-panel { display: none; }
+    #compare-panel.visible { display: block; }
+
+    .compare-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .compare-controls select, .compare-controls button {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .compare-controls button {
+      background: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+
+    /* ── Gainers/Losers ────────────────────────────────────────────────────── */
+    #gl-panel { display: none; }
+    #gl-panel.visible { display: block; }
+
+    .gl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .gl-table { width: 100%; border-collapse: collapse; }
+    .gl-table th {
+      text-align: left;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .gl-table td { padding: 8px; border-bottom: 1px solid rgba(48,54,61,.6); font-size: 13px; }
+    .gl-table tr:hover td { background: rgba(88,166,255,.04); }
+
+    /* ── Prediction ────────────────────────────────────────────────────────── */
+    #predict-panel { display: none; }
+    #predict-panel.visible { display: block; }
+
+    /* ── Loader ────────────────────────────────────────────────────────────── */
+    #loader {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(13,17,23,.7);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      font-size: 16px;
+      color: var(--accent);
+    }
+    #loader.show { display: flex; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside id="sidebar">
+  <h2>📈 Companies</h2>
+  <div id="company-list">Loading…</div>
+</aside>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <h1>Stock Intelligence</h1>
+    <button class="tab-btn active" onclick="switchTab('stock')">Stock</button>
+    <button class="tab-btn" onclick="switchTab('compare')">Compare</button>
+    <button class="tab-btn" onclick="switchTab('gl')">Gainers / Losers</button>
+    <button class="tab-btn" onclick="switchTab('predict')">Predict 🤖</button>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- ── Stock Panel ───────────────────────────────────────────────────── -->
+    <div id="stock-panel">
+      <div id="stock-placeholder" style="text-align:center;margin-top:80px;color:var(--muted)">
+        ← Select a company to view its data
+      </div>
+
+      <div id="stock-data" style="display:none">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:16px">
+          <span id="s-symbol" style="font-size:26px;font-weight:800;color:var(--accent)"></span>
+          <span id="s-name"   style="font-size:14px;color:var(--muted)"></span>
+          <span id="s-sector" style="font-size:12px;background:rgba(88,166,255,.15);color:var(--accent);padding:2px 8px;border-radius:20px;margin-left:auto"></span>
+        </div>
+
+        <!-- Stats row -->
+        <div id="stats-row">
+          <div class="stat-card"><div class="stat-label">Latest Close</div><div class="stat-value" id="s-close">—</div></div>
+          <div class="stat-card"><div class="stat-label">52-W High</div><div class="stat-value up" id="s-52h">—</div></div>
+          <div class="stat-card"><div class="stat-label">52-W Low</div><div class="stat-value down" id="s-52l">—</div></div>
+          <div class="stat-card"><div class="stat-label">Avg Close</div><div class="stat-value" id="s-avg">—</div></div>
+          <div class="stat-card"><div class="stat-label">Avg Daily Return</div><div class="stat-value" id="s-ret">—</div></div>
+          <div class="stat-card"><div class="stat-label">RSI (14)</div><div class="stat-value" id="s-rsi">—</div></div>
+          <div class="stat-card"><div class="stat-label">Avg Volatility</div><div class="stat-value" id="s-vol">—</div></div>
+        </div>
+
+        <!-- Range -->
+        <div id="range-btns">
+          <button class="range-btn" onclick="loadRange(30)" id="r30">30D</button>
+          <button class="range-btn active" onclick="loadRange(90)" id="r90">90D</button>
+          <button class="range-btn" onclick="loadRange(180)" id="r180">6M</button>
+          <button class="range-btn" onclick="loadRange(365)" id="r365">1Y</button>
+        </div>
+
+        <!-- Close price chart -->
+        <div class="chart-card">
+          <h3>Closing Price &amp; Moving Averages</h3>
+          <canvas id="priceChart"></canvas>
+        </div>
+
+        <!-- Daily return chart -->
+        <div class="chart-card">
+          <h3>Daily Return (%)</h3>
+          <canvas id="returnChart"></canvas>
+        </div>
+
+        <!-- RSI chart -->
+        <div class="chart-card">
+          <h3>RSI (14-day)</h3>
+          <canvas id="rsiChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Compare Panel ─────────────────────────────────────────────────── -->
+    <div id="compare-panel">
+      <div class="compare-controls">
+        <select id="c-sym1"></select>
+        <span style="color:var(--muted)">vs</span>
+        <select id="c-sym2"></select>
+        <select id="c-days">
+          <option value="30">30 Days</option>
+          <option value="90" selected>90 Days</option>
+          <option value="180">6 Months</option>
+          <option value="365">1 Year</option>
+        </select>
+        <button onclick="runCompare()">Compare →</button>
+      </div>
+      <div class="chart-card">
+        <h3>Normalized Price (Base = 100)</h3>
+        <canvas id="compareChart"></canvas>
+      </div>
+      <div id="compare-stats" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px"></div>
+    </div>
+
+    <!-- ── Gainers / Losers Panel ─────────────────────────────────────────── -->
+    <div id="gl-panel">
+      <div class="chart-card" style="margin-bottom:0">
+        <h3 style="margin-bottom:4px;font-size:15px;color:var(--text)">Today's Top Movers</h3>
+        <div id="gl-date" style="color:var(--muted);font-size:12px;margin-bottom:16px"></div>
+        <div class="gl-grid">
+          <div>
+            <div style="color:var(--green);font-weight:700;margin-bottom:8px">▲ Top Gainers</div>
+            <table class="gl-table" id="gl-gainers"></table>
+          </div>
+          <div>
+            <div style="color:var(--red);font-weight:700;margin-bottom:8px">▼ Top Losers</div>
+            <table class="gl-table" id="gl-losers"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Predict Panel ─────────────────────────────────────────────────── -->
+    <div id="predict-panel">
+      <div class="compare-controls">
+        <select id="p-sym"></select>
+        <select id="p-horizon">
+          <option value="7" selected>7 Days</option>
+          <option value="14">14 Days</option>
+          <option value="30">30 Days</option>
+        </select>
+        <button onclick="runPredict()">Predict →</button>
+      </div>
+      <div class="chart-card">
+        <h3>Predicted Closing Prices</h3>
+        <canvas id="predictChart"></canvas>
+      </div>
+      <div style="color:var(--muted);font-size:12px;margin-top:8px">
+        ⚠️ Predictions use a simple Linear Regression model trained on lag features + technical indicators.
+        For educational / demo purposes only — not financial advice.
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<div id="loader">⏳ Loading…</div>
+
+<script>
+/* ── Globals ──────────────────────────────────────────────────────────────── */
+const API   = '';                      // same origin
+let companies  = [];
+let activeSymbol = null;
+let activeRange  = 90;
+let charts     = {};
+
+/* ── Helpers ──────────────────────────────────────────────────────────────── */
+const $  = id => document.getElementById(id);
+const show = id => $(id).classList.add('visible');
+const hide = id => $(id).classList.remove('visible');
+const fmt  = n  => n != null ? Number(n).toLocaleString('en-IN', {maximumFractionDigits:2}) : '—';
+const fmtPct = n => n != null ? (n > 0 ? '+' : '') + Number(n).toFixed(2) + '%' : '—';
+const loader = v => $('loader').className = v ? 'show' : '';
+
+async function apiFetch(url) {
+  loader(true);
+  try {
+    const r = await fetch(API + url);
+    if (!r.ok) throw new Error(await r.text());
+    return await r.json();
+  } finally {
+    loader(false);
+  }
+}
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+/* ── Boot ──────────────────────────────────────────────────────────────────── */
+async function init() {
+  const data = await apiFetch('/companies');
+  companies = data.companies;
+  renderSidebar();
+  populateSelects();
+  loadGainersLosers();
+}
+
+function renderSidebar() {
+  $('company-list').innerHTML = companies.map(c => `
+    <div class="company-item" id="ci-${c.symbol}" onclick="selectCompany('${c.symbol}')">
+      <span class="ci-symbol">${c.symbol}</span>
+      <span class="ci-name">${c.name}</span>
+      <span class="ci-sector">${c.sector}</span>
+    </div>`).join('');
+}
+
+function populateSelects() {
+  const opts = companies.map(c => `<option value="${c.symbol}">${c.symbol} — ${c.name}</option>`).join('');
+  ['c-sym1','c-sym2','p-sym'].forEach(id => $(id).innerHTML = opts);
+  $('c-sym2').selectedIndex = 1;
+}
+
+/* ── Tab switching ─────────────────────────────────────────────────────────── */
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['stock','compare','gl','predict'][i] === tab);
+  });
+  $('stock-panel').style.display  = tab === 'stock'   ? '' : 'none';
+  ['compare-panel','gl-panel','predict-panel'].forEach(id => {
+    $(id).classList.toggle('visible', id.startsWith(tab));
+  });
+}
+
+/* ── Select company ────────────────────────────────────────────────────────── */
+async function selectCompany(symbol) {
+  activeSymbol = symbol;
+  switchTab('stock');
+  document.querySelectorAll('.company-item').forEach(el => el.classList.remove('active'));
+  document.getElementById(`ci-${symbol}`)?.classList.add('active');
+  await loadStock();
+}
+
+async function loadStock() {
+  if (!activeSymbol) return;
+
+  const [summ, stockData] = await Promise.all([
+    apiFetch(`/summary/${activeSymbol}`),
+    apiFetch(`/data/${activeSymbol}?days=${activeRange}`),
+  ]);
+
+  // Update header
+  $('s-symbol').textContent = summ.symbol;
+  $('s-name').textContent   = summ.name;
+  $('s-sector').textContent = summ.sector;
+
+  // Stats
+  $('s-close').textContent = '₹' + fmt(summ.latest_close);
+  $('s-52h').textContent   = '₹' + fmt(summ['52w_high']);
+  $('s-52l').textContent   = '₹' + fmt(summ['52w_low']);
+  $('s-avg').textContent   = '₹' + fmt(summ.avg_close);
+  const retEl = $('s-ret');
+  retEl.textContent  = fmtPct(summ.avg_daily_return);
+  retEl.className    = 'stat-value ' + (summ.avg_daily_return >= 0 ? 'up' : 'down');
+  $('s-vol').textContent   = (summ.avg_volatility * 100).toFixed(3) + '%';
+
+  const rsiEl = $('s-rsi');
+  rsiEl.textContent = summ.latest_rsi ?? '—';
+  rsiEl.className   = 'stat-value ' + (summ.latest_rsi > 70 ? 'down' : summ.latest_rsi < 30 ? 'up' : '');
+
+  // Range buttons
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+  $(`r${Math.min(activeRange, 365)}`).classList.add('active');
+
+  renderCharts(stockData.data);
+
+  $('stock-placeholder').style.display = 'none';
+  $('stock-data').style.display        = '';
+}
+
+function loadRange(days) {
+  activeRange = days;
+  loadStock();
+}
+
+/* ── Charts ────────────────────────────────────────────────────────────────── */
+const CHART_DEFAULTS = {
+  animation: false,
+  plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#6e7681', maxTicksLimit: 8 }, grid: { color: '#21262d' } },
+    y: { ticks: { color: '#6e7681' }, grid: { color: '#21262d' } },
+  },
+};
+
+function renderCharts(data) {
+  const labels = data.map(d => d.date);
+
+  // Price + MAs
+  destroyChart('price');
+  charts['price'] = new Chart($('priceChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Close', data: data.map(d => d.close), borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,.08)', borderWidth: 1.5, pointRadius: 0, fill: true },
+        { label: 'MA 7',  data: data.map(d => d.ma_7),  borderColor: '#f78166', borderWidth: 1.2, pointRadius: 0, borderDash: [4,3] },
+        { label: 'MA 30', data: data.map(d => d.ma_30), borderColor: '#3fb950', borderWidth: 1.2, pointRadius: 0, borderDash: [4,3] },
+      ],
+    },
+    options: { ...CHART_DEFAULTS, responsive: true, maintainAspectRatio: true },
+  });
+
+  // Daily return
+  destroyChart('return');
+  charts['return'] = new Chart($('returnChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Daily Return %',
+        data:  data.map(d => d.daily_return),
+        backgroundColor: data.map(d => d.daily_return >= 0 ? 'rgba(63,185,80,.7)' : 'rgba(248,81,73,.7)'),
+      }],
+    },
+    options: { ...CHART_DEFAULTS, responsive: true, maintainAspectRatio: true },
+  });
+
+  // RSI
+  destroyChart('rsi');
+  charts['rsi'] = new Chart($('rsiChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'RSI 14', data: data.map(d => d.rsi_14), borderColor: '#a371f7', borderWidth: 1.5, pointRadius: 0 },
+      ],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100,
+          ticks: { color: '#6e7681', callback: v => v },
+        },
+      },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        annotation: undefined,
+      },
+    },
+  });
+}
+
+/* ── Compare ───────────────────────────────────────────────────────────────── */
+async function runCompare() {
+  const s1   = $('c-sym1').value;
+  const s2   = $('c-sym2').value;
+  const days = $('c-days').value;
+  if (s1 === s2) { alert('Please select two different stocks.'); return; }
+
+  const data = await apiFetch(`/compare?symbol1=${s1}&symbol2=${s2}&days=${days}`);
+
+  const labels = data.chart_data.map(d => d.date);
+
+  destroyChart('compare');
+  charts['compare'] = new Chart($('compareChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: s1, data: data.chart_data.map(d => d[`norm_${s1}`]), borderColor: '#58a6ff', borderWidth: 2, pointRadius: 0 },
+        { label: s2, data: data.chart_data.map(d => d[`norm_${s2}`]), borderColor: '#f78166', borderWidth: 2, pointRadius: 0 },
+      ],
+    },
+    options: { ...CHART_DEFAULTS, responsive: true, maintainAspectRatio: true },
+  });
+
+  const statsBox = $('compare-stats');
+  [data.stock1, data.stock2].forEach((s, i) => {
+    const color = i === 0 ? '#58a6ff' : '#f78166';
+    const ret   = s.total_return_pct;
+    statsBox.children[i] ? statsBox.children[i].remove() : null;
+    const div = document.createElement('div');
+    div.className = 'chart-card';
+    div.innerHTML = `
+      <h3 style="color:${color};font-size:15px">${s.symbol} — ${s.name}</h3>
+      <p style="color:var(--muted);font-size:12px;margin:4px 0 10px">${s.sector}</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><div class="stat-label">Start Price</div><div style="font-weight:600">₹${fmt(s.start_price)}</div></div>
+        <div><div class="stat-label">End Price</div><div style="font-weight:600">₹${fmt(s.end_price)}</div></div>
+        <div><div class="stat-label">Total Return</div><div style="font-weight:700;color:${ret>=0?'var(--green)':'var(--red)'}">${fmtPct(ret)}</div></div>
+        <div><div class="stat-label">Avg Volatility</div><div style="font-weight:600">${(s.avg_volatility*100).toFixed(3)}%</div></div>
+      </div>`;
+    statsBox.appendChild(div);
+  });
+
+  const corrEl = document.getElementById('corr-row');
+  if (corrEl) corrEl.remove();
+  const corr = document.createElement('div');
+  corr.id = 'corr-row';
+  corr.style.cssText = 'grid-column:1/-1;text-align:center;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:10px';
+  corr.innerHTML = `<span style="color:var(--muted)">Return Correlation: </span><strong style="color:var(--accent);font-size:16px">${data.correlation.toFixed(4)}</strong>`;
+  statsBox.appendChild(corr);
+}
+
+/* ── Gainers / Losers ──────────────────────────────────────────────────────── */
+async function loadGainersLosers() {
+  const data = await apiFetch('/gainers-losers');
+  $('gl-date').textContent = 'As of: ' + data.date;
+
+  function renderTable(id, rows, isGainer) {
+    $(id).innerHTML = `
+      <tr><th>Symbol</th><th>Name</th><th>Close</th><th>Return</th></tr>
+      ${rows.map(r => `
+        <tr>
+          <td style="color:var(--accent);font-weight:700">${r.symbol}</td>
+          <td style="color:var(--muted)">${r.name}</td>
+          <td>₹${fmt(r.close)}</td>
+          <td style="color:${r.daily_return>=0?'var(--green)':'var(--red)'};font-weight:600">${fmtPct(r.daily_return)}</td>
+        </tr>`).join('')}`;
+  }
+  renderTable('gl-gainers', data.gainers, true);
+  renderTable('gl-losers',  data.losers,  false);
+}
+
+/* ── Prediction ─────────────────────────────────────────────────────────────── */
+async function runPredict() {
+  const sym     = $('p-sym').value;
+  const horizon = $('p-horizon').value;
+  const data    = await apiFetch(`/predict/${sym}?horizon=${horizon}`);
+
+  const labels = data.predictions.map(d => d.date);
+  const prices = data.predictions.map(d => d.predicted_close);
+
+  destroyChart('predict');
+  charts['predict'] = new Chart($('predictChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: `${sym} Predicted Close`,
+          data: prices,
+          borderColor: '#a371f7',
+          backgroundColor: 'rgba(163,113,247,.1)',
+          borderWidth: 2,
+          pointRadius: 4,
+          fill: true,
+          tension: 0.3,
+        },
+      ],
+    },
+    options: { ...CHART_DEFAULTS, responsive: true, maintainAspectRatio: true },
+  });
+}
+
+/* ── Start ─────────────────────────────────────────────────────────────────── */
+init();
+</script>
+</body>
+</html>
